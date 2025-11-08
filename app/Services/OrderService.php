@@ -1,9 +1,11 @@
 <?php
+
 namespace App\Services;
 
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Cart;
+use App\Models\ProductSize;
 use Illuminate\Support\Facades\DB;
 
 class OrderService
@@ -11,7 +13,7 @@ class OrderService
     public function createFromCart($user, $data)
     {
         return DB::transaction(function() use ($user, $data) {
-            $cart = Cart::with('items.variant.product')->where('user_id',$user->id)->first();
+            $cart = Cart::with('items.product')->where('user_id',$user->id)->first();
             if (!$cart || $cart->items->isEmpty()) {
                 throw new \Exception('Cart is empty');
             }
@@ -35,19 +37,23 @@ class OrderService
             foreach ($cart->items as $item) {
                 OrderItem::create([
                     'order_id'=>$order->id,
-                    'product_variant_id'=>$item->product_variant_id,
-                    'name'=>$item->variant?->product?->name ?? 'Product',
+                    'product_id'=>$item->product_id,
+                    'size'=>$item->size,        // store selected size
                     'quantity'=>$item->quantity,
                     'price'=>$item->price,
                     'total'=>$item->price * $item->quantity
                 ]);
 
-                // reduce stock if variant exists
-                if ($item->variant) {
-                    $variant = $item->variant;
-                    $variant->decrement('stock', $item->quantity);
-                }
+                // reduce size stock
+                ProductSize::where('product_id', $item->product_id)
+                    ->where('size', $item->size)
+                    ->decrement('stock', $item->quantity);
             }
+
+            // insert initial order status history
+            $order->statuses()->create([
+                'status' => 'pending'
+            ]);
 
             // empty cart
             $cart->items()->delete();

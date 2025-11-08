@@ -14,15 +14,44 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $q = Product::with(['primaryImage','variants','category','brand']);
-        if ($request->filled('category')) $q->where('category_id', $request->category);
-        if ($request->filled('q')) $q->where('name','like','%'.$request->q.'%');
+
+        // category filter
+        if ($request->filled('category')) {
+            $q->where('category_id', $request->category);
+        }
+
+        // search filter
+        if ($request->filled('q')) {
+            $q->where('name','like','%'.$request->q.'%');
+        }
+
+        // price range
+        if ($request->filled('min_price')) {
+            $q->where('price', '>=', $request->min_price);
+        }
+
+        if ($request->filled('max_price')) {
+            $q->where('price', '<=', $request->max_price);
+        }
+
+        // sorting
+        if ($request->sort_by == 'price_low') {
+            $q->orderBy('price','asc');
+        } else if ($request->sort_by == 'price_high') {
+            $q->orderBy('price','desc');
+        } else {
+            // default latest products
+            $q->orderBy('id','desc');
+        }
+
         $products = $q->paginate(20);
+
         return ProductResource::collection($products);
     }
 
     public function show($id)
     {
-        $product = Product::with(['images','variants','reviews'])->findOrFail($id);
+        $product = Product::with(['images','variants','reviews.user'])->findOrFail($id);
         return new ProductResource($product);
     }
 
@@ -30,7 +59,9 @@ class ProductController extends Controller
     {
         $data = $request->validated();
         $data['slug'] = Str::slug($data['name']).'-'.uniqid();
+
         $product = Product::create($data);
+
         return new ProductResource($product);
     }
 
@@ -38,6 +69,7 @@ class ProductController extends Controller
     {
         $product = Product::findOrFail($id);
         $product->update($request->validated());
+
         return new ProductResource($product);
     }
 
@@ -45,6 +77,8 @@ class ProductController extends Controller
     {
         $product = Product::findOrFail($id);
         $product->delete();
+
         return response()->json(null, 204);
     }
 }
+
